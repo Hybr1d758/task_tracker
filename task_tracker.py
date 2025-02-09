@@ -4,9 +4,16 @@ import os
 import shutil
 import csv
 from datetime import datetime
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 # Define the file where tasks will be stored
 TASKS_FILE = "tasks.json"
+
+# Gmail credentials (replace with your actual credentials)
+GMAIL_USER = 'your_email@gmail.com'
+GMAIL_PASSWORD = 'your_password'
 
 # Load tasks from the JSON file
 def load_tasks():
@@ -99,6 +106,27 @@ def export_to_csv():
         for task in tasks:
             writer.writerow([task["id"], task["title"], task["status"], task.get("due_date", ""), task.get("priority", ""), task.get("repeat", "")])
     print("Tasks exported to tasks.csv")
+
+def send_email_reminder(task):
+    subject = f"Reminder: {task['title']} is due on {task['due_date']}"
+    body = f"Reminder: {task['title']} is due on {task['due_date']}. Note: {task.get('note', 'No additional notes.')}"
+    
+    msg = MIMEMultipart()
+    msg['From'] = GMAIL_USER
+    msg['To'] = YOUR_PHONE_NUMBER + '@your_carrier_sms_gateway'  # Replace with your carrier's SMS gateway
+    msg['Subject'] = subject
+    msg.attach(MIMEText(body, 'plain'))
+
+    try:
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(GMAIL_USER, GMAIL_PASSWORD)
+        text = msg.as_string()
+        server.sendmail(GMAIL_USER, YOUR_PHONE_NUMBER + '@your_carrier_sms_gateway', text)
+        server.quit()
+        print(f"Reminder sent for task {task['id']}: {task['title']}")
+    except Exception as e:
+        print(f"Failed to send reminder: {e}")
 
 def main():
     parser = argparse.ArgumentParser(description="Task Tracker CLI")
