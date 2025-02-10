@@ -7,6 +7,7 @@ from datetime import datetime
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import sqlite3
 
 # Define the file where tasks will be stored
 TASKS_FILE = "tasks.json"
@@ -15,60 +16,68 @@ TASKS_FILE = "tasks.json"
 GMAIL_USER = 'your_email@gmail.com'
 GMAIL_PASSWORD = 'your_password'
 
-# Load tasks from the JSON file
+# Load tasks from the database
 def load_tasks():
-    if not os.path.exists(TASKS_FILE):
-        return []  # Return an empty list if the file does not exist
-    with open(TASKS_FILE, "r") as file:
-        return json.load(file)  # Load and return the tasks from the file
+    conn = sqlite3.connect('tasks.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM tasks')
+    tasks = cursor.fetchall()
+    conn.close()
+    return tasks
 
-# Save tasks to the JSON file
-def save_tasks(tasks):
-    if os.path.exists(TASKS_FILE):
-        shutil.copy(TASKS_FILE, TASKS_FILE + ".bak")  # Create a backup before saving
-    with open(TASKS_FILE, "w") as file:
-        json.dump(tasks, file, indent=4)  # Save the tasks to the file with indentation
+# Save a task to the database
+def save_task(task):
+    conn = sqlite3.connect('tasks.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO tasks (title, status, due_date, priority, repeat, note)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (task['title'], task['status'], task['due_date'], task['priority'], task['repeat'], task.get('note')))
+    conn.commit()
+    conn.close()
 
 # Add a new task to the list
 def add_task(title, due_date=None, priority="medium", repeat=None):
-    tasks = load_tasks()  # Load existing tasks
     task = {
-        "id": len(tasks) + 1,  # Assign a new ID to the task
         "title": title,
         "status": "todo",
         "due_date": due_date,
         "priority": priority,
         "repeat": repeat
     }
-    tasks.append(task)  # Add the new task to the list
-    save_tasks(tasks)  # Save the updated list of tasks
+    save_task(task)  # Save the new task to the database
     print(f"Task added: {title} (Priority: {priority}, Due: {due_date}, Repeats: {repeat})")
 
 # Update the title of an existing task
 def update_task(task_id, title):
-    tasks = load_tasks()  # Load existing tasks
-    for task in tasks:
-        if task["id"] == task_id:
-            task["title"] = title  # Update the task title
-            save_tasks(tasks)  # Save the updated list of tasks
-            print("Task updated.")
-            return
-    print("Task not found.")  # Print a message if the task was not found
+    conn = sqlite3.connect('tasks.db')
+    cursor = conn.cursor()
+    cursor.execute('UPDATE tasks SET title = ? WHERE id = ?', (title, task_id))
+    conn.commit()
+    conn.close()
+    print("Task updated.")
 
 # Delete a task from the list
 def delete_task(task_id):
-    tasks = load_tasks()  # Load existing tasks
-    tasks = [task for task in tasks if task["id"] != task_id]  # Remove the task with the given ID
-    save_tasks(tasks)  # Save the updated list of tasks
+    conn = sqlite3.connect('tasks.db')
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
+    conn.commit()
+    conn.close()
     print("Task deleted.")
 
 # List all tasks, optionally sorted by a specified field
 def list_tasks(sort_by=None):
-    tasks = load_tasks()  # Load existing tasks
+    conn = sqlite3.connect('tasks.db')
+    cursor = conn.cursor()
     if sort_by:
-        tasks = sorted(tasks, key=lambda x: x.get(sort_by))  # Sort tasks by the specified field
+        cursor.execute(f'SELECT * FROM tasks ORDER BY {sort_by}')
+    else:
+        cursor.execute('SELECT * FROM tasks')
+    tasks = cursor.fetchall()
+    conn.close()
     for task in tasks:
-        print(task)  # Print each task
+        print(task)
 
 def mark_task(task_id, status):
     tasks = load_tasks()
@@ -128,6 +137,23 @@ def send_email_reminder(task):
     except Exception as e:
         print(f"Failed to send reminder: {e}")
 
+def init_db():
+    conn = sqlite3.connect('tasks.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY,
+            title TEXT NOT NULL,
+            status TEXT NOT NULL,
+            due_date TEXT,
+            priority TEXT,
+            repeat TEXT,
+            note TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
 def main():
     parser = argparse.ArgumentParser(description="Task Tracker CLI")
     parser.add_argument("command", choices=["add", "update", "delete", "list", "done", "todo", "progress", "search", "undo", "export"], help="Command to execute")
@@ -141,6 +167,8 @@ def main():
     
     args = parser.parse_args()
     
+    init_db()  # Initialize the database
+
     if args.command == "add" and args.title:
         add_task(args.title, args.due, args.priority, args.repeat)
     elif args.command == "update" and args.id and args.title:
