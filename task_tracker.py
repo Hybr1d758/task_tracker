@@ -4,80 +4,64 @@ import os
 import shutil
 import csv
 from datetime import datetime
-import sqlite3
 
 # Define the file where tasks will be stored
 TASKS_FILE = "tasks.json"
 
-# Gmail credentials (replace with your actual credentials)
-GMAIL_USER = 'your_email@gmail.com'
-GMAIL_PASSWORD = 'your_password'
-
-# Your phone number (replace with your actual phone number)
-YOUR_PHONE_NUMBER = '1234567890'
-
-# Load tasks from the database
+# Load tasks from the JSON file
 def load_tasks():
-    conn = sqlite3.connect('tasks.db')
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM tasks')
-    tasks = cursor.fetchall()
-    conn.close()
-    return tasks
+    if not os.path.exists(TASKS_FILE):
+        return []  # Return an empty list if the file does not exist
+    with open(TASKS_FILE, "r") as file:
+        return json.load(file)  # Load and return the tasks from the file
 
-# Save a task to the database
-def save_task(task):
-    conn = sqlite3.connect('tasks.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO tasks (title, status, due_date, priority, repeat, note)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (task['title'], task['status'], task['due_date'], task['priority'], task['repeat'], task.get('note')))
-    conn.commit()
-    conn.close()
+# Save tasks to the JSON file
+def save_tasks(tasks):
+    if os.path.exists(TASKS_FILE):
+        shutil.copy(TASKS_FILE, TASKS_FILE + ".bak")  # Create a backup before saving
+    with open(TASKS_FILE, "w") as file:
+        json.dump(tasks, file, indent=4)  # Save the tasks to the file with indentation
 
 # Add a new task to the list
 def add_task(title, due_date=None, priority="medium", repeat=None):
+    tasks = load_tasks()  # Load existing tasks
     task = {
+        "id": len(tasks) + 1,  # Assign a new ID to the task
         "title": title,
         "status": "todo",
         "due_date": due_date,
         "priority": priority,
         "repeat": repeat
     }
-    save_task(task)  # Save the new task to the database
+    tasks.append(task)  # Add the new task to the list
+    save_tasks(tasks)  # Save the updated list of tasks
     print(f"Task added: {title} (Priority: {priority}, Due: {due_date}, Repeats: {repeat})")
 
 # Update the title of an existing task
 def update_task(task_id, title):
-    conn = sqlite3.connect('tasks.db')
-    cursor = conn.cursor()
-    cursor.execute('UPDATE tasks SET title = ? WHERE id = ?', (title, task_id))
-    conn.commit()
-    conn.close()
-    print("Task updated.")
+    tasks = load_tasks()  # Load existing tasks
+    for task in tasks:
+        if task["id"] == task_id:
+            task["title"] = title  # Update the task title
+            save_tasks(tasks)  # Save the updated list of tasks
+            print("Task updated.")
+            return
+    print("Task not found.")  # Print a message if the task was not found
 
 # Delete a task from the list
 def delete_task(task_id):
-    conn = sqlite3.connect('tasks.db')
-    cursor = conn.cursor()
-    cursor.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
-    conn.commit()
-    conn.close()
+    tasks = load_tasks()  # Load existing tasks
+    tasks = [task for task in tasks if task["id"] != task_id]  # Remove the task with the given ID
+    save_tasks(tasks)  # Save the updated list of tasks
     print("Task deleted.")
 
 # List all tasks, optionally sorted by a specified field
 def list_tasks(sort_by=None):
-    conn = sqlite3.connect('tasks.db')
-    cursor = conn.cursor()
+    tasks = load_tasks()  # Load existing tasks
     if sort_by:
-        cursor.execute(f'SELECT * FROM tasks ORDER BY {sort_by}')
-    else:
-        cursor.execute('SELECT * FROM tasks')
-    tasks = cursor.fetchall()
-    conn.close()
+        tasks = sorted(tasks, key=lambda x: x.get(sort_by))  # Sort tasks by the specified field
     for task in tasks:
-        print(task)
+        print(task)  # Print each task
 
 def mark_task(task_id, status):
     tasks = load_tasks()
@@ -86,15 +70,7 @@ def mark_task(task_id, status):
             task["status"] = status
             if status == "done":
                 task["completed_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            conn = sqlite3.connect('tasks.db')
-            cursor = conn.cursor()
-            cursor.execute('''
-                UPDATE tasks
-                SET status = ?, completed_at = ?
-                WHERE id = ?
-            ''', (status, task.get("completed_at"), task_id))
-            conn.commit()
-            conn.close()
+            save_tasks(tasks)
             print(f"Task {task_id} marked as {status}.")
             return
     print("Task not found.")
@@ -124,23 +100,6 @@ def export_to_csv():
             writer.writerow([task["id"], task["title"], task["status"], task.get("due_date", ""), task.get("priority", ""), task.get("repeat", "")])
     print("Tasks exported to tasks.csv")
 
-def init_db():
-    conn = sqlite3.connect('tasks.db')
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY,
-            title TEXT NOT NULL,
-            status TEXT NOT NULL,
-            due_date TEXT,
-            priority TEXT,
-            repeat TEXT,
-            note TEXT
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
 def main():
     parser = argparse.ArgumentParser(description="Task Tracker CLI")
     parser.add_argument("command", choices=["add", "update", "delete", "list", "done", "todo", "progress", "search", "undo", "export"], help="Command to execute")
@@ -153,8 +112,6 @@ def main():
     parser.add_argument("--sort", type=str, choices=["priority", "due_date"], help="Sort tasks by priority or due date")
     
     args = parser.parse_args()
-    
-    init_db()  # Initialize the database
 
     if args.command == "add" and args.title:
         add_task(args.title, args.due, args.priority, args.repeat)
