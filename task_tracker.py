@@ -77,12 +77,13 @@ def mark_task(task_id, status):
 
 def search_tasks(keyword):
     tasks = load_tasks()
-    results = [task for task in tasks if keyword.lower() in task["title"].lower()]
-    if results:
-        for task in results:
-            print(f"[{task['id']}] {task['title']} - {task['status']}")
-    else:
-        print("No tasks found.")
+    results = []
+    for task in tasks:
+        task_title = task["title"].lower()
+        if keyword.lower() in task_title:
+            results.append(task)
+    return results
+
 
 def undo_last_action():
     if os.path.exists(TASKS_FILE + ".bak"):
