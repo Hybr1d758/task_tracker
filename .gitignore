@@ -1,0 +1,21 @@
+# Ignore Python bytecode files
+__pycache__/
+*.py[cod]
+
+# Ignore pytest cache
+.cache/
+
+# Ignore test results
+*.xml
+*.html
+*.json
+
+# Ignore coverage reports
+.coverage
+htmlcov/
+coverage.xml
+
+# Ignore task tracker files
+tasks.json
+tasks.json.bak
+tasks.csv
